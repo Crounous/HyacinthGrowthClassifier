@@ -7,6 +7,7 @@ import { AlertTriangle, CheckCircle, Camera, History, RefreshCw, Settings2, Slid
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 const MIN_CLASSIFICATION_INTERVAL = 5
 const MAX_CLASSIFICATION_INTERVAL = 60 * 60 * 24
+const DEFAULT_CLASSIFICATION_INTERVAL = 5 * 60
 
 type CameraDevice = {
   deviceId: string
@@ -77,8 +78,8 @@ function App() {
   const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null)
   const [devicesLoading, setDevicesLoading] = useState(false)
   const [deviceLoadError, setDeviceLoadError] = useState<string | null>(null)
-  const [classificationIntervalSeconds, setClassificationIntervalSeconds] = useState(MIN_CLASSIFICATION_INTERVAL)
-  const [intervalInputValue, setIntervalInputValue] = useState(String(MIN_CLASSIFICATION_INTERVAL))
+  const [classificationIntervalSeconds, setClassificationIntervalSeconds] = useState(DEFAULT_CLASSIFICATION_INTERVAL)
+  const [intervalInputValue, setIntervalInputValue] = useState(String(DEFAULT_CLASSIFICATION_INTERVAL))
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
   const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
