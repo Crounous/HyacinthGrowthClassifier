@@ -8,6 +8,7 @@ const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 const MIN_CLASSIFICATION_INTERVAL = 5
 const MAX_CLASSIFICATION_INTERVAL = 60 * 60 * 24
 const DEFAULT_CLASSIFICATION_INTERVAL = 5 * 60
+const PH_LOCAL_NUMBER_LENGTH = 10
 
 type CameraDevice = {
   deviceId: string
@@ -25,6 +26,7 @@ type HistoryEntry = {
   created_at?: string | null
   model_path?: string | null
   file_size?: number | null
+  authority_number?: string | null
 }
 
 type HistoryFilter = 'all' | 'camera' | 'upload'
@@ -85,6 +87,12 @@ function App() {
   const [historyLoading, setHistoryLoading] = useState(false)
   const [historyError, setHistoryError] = useState<string | null>(null)
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>('all')
+  const [authorityNumber, setAuthorityNumber] = useState('')
+  const [authorityError, setAuthorityError] = useState<string | null>(null)
+  const [authorityLoading, setAuthorityLoading] = useState(true)
+  const [authorityLoadError, setAuthorityLoadError] = useState<string | null>(null)
+  const [authoritySaveState, setAuthoritySaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [authoritySaveMessage, setAuthoritySaveMessage] = useState<string | null>(null)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -102,6 +110,55 @@ function App() {
   useEffect(() => {
     setIntervalInputValue(String(classificationIntervalSeconds))
   }, [classificationIntervalSeconds])
+
+  const fetchAuthorityContact = useCallback(async () => {
+    setAuthorityLoading(true)
+    setAuthorityLoadError(null)
+
+    try {
+      const response = await fetch(`${API_URL}/settings/authority-number`)
+      let payload: { authority_number?: string | null; detail?: string } | null = null
+
+      try {
+        payload = await response.json()
+      } catch {
+        payload = null
+      }
+
+      if (!response.ok) {
+        const detail = typeof payload?.detail === 'string' ? payload.detail : 'Failed to load authority contact.'
+        throw new Error(detail)
+      }
+
+      const stored = payload?.authority_number
+      if (typeof stored === 'string' && stored.startsWith('+63') && stored.length > 3) {
+        setAuthorityNumber(stored.slice(3))
+        setAuthorityError(null)
+      } else {
+        setAuthorityNumber('')
+      }
+      setAuthoritySaveState('idle')
+      setAuthoritySaveMessage(null)
+
+      setAuthorityLoadError(null)
+
+      if (!backendOnline) {
+        setBackendOnline(true)
+      }
+    } catch (error) {
+      console.error(error)
+      setAuthorityLoadError(error instanceof Error ? error.message : 'Unable to load authority contact.')
+      if (error instanceof TypeError) {
+        setBackendOnline(false)
+      }
+    } finally {
+      setAuthorityLoading(false)
+    }
+  }, [backendOnline])
+
+  useEffect(() => {
+    void fetchAuthorityContact()
+  }, [fetchAuthorityContact])
 
   const fetchHistory = useCallback(async (filter: HistoryFilter) => {
     setHistoryLoading(true)
@@ -172,6 +229,77 @@ function App() {
     return new Date(timestamp).toLocaleString()
   }
 
+  const handleAuthorityNumberChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const digitsOnly = event.target.value.replace(/\D/g, '')
+    const trimmed = digitsOnly.slice(0, PH_LOCAL_NUMBER_LENGTH)
+    setAuthorityNumber(trimmed)
+    setAuthoritySaveState('idle')
+    setAuthoritySaveMessage(null)
+    setAuthorityLoadError(null)
+
+    if (!trimmed) {
+      setAuthorityError('Enter a contact number to notify.')
+    } else if (trimmed.length < PH_LOCAL_NUMBER_LENGTH) {
+      setAuthorityError('Must include 10 digits after +63.')
+    } else {
+      setAuthorityError(null)
+    }
+  }
+
+  const handleSaveAuthorityNumber = useCallback(async () => {
+    if (authorityError || authorityNumber.length < PH_LOCAL_NUMBER_LENGTH) {
+      setAuthoritySaveState('error')
+      setAuthoritySaveMessage('Provide a full Philippine number before saving.')
+      return
+    }
+
+    const formattedAuthority = `+63${authorityNumber}`
+    setAuthoritySaveState('saving')
+    setAuthoritySaveMessage(null)
+
+    try {
+      const response = await fetch(`${API_URL}/settings/authority-number`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ authority_number: formattedAuthority }),
+      })
+
+      let payload: { authority_number?: string; detail?: string } | null = null
+
+      try {
+        payload = await response.json()
+      } catch {
+        payload = null
+      }
+
+      if (!response.ok) {
+        const detail = typeof payload?.detail === 'string' ? payload.detail : 'Failed to save authority contact.'
+        throw new Error(detail)
+      }
+
+      const stored = payload?.authority_number
+      if (typeof stored === 'string' && stored.startsWith('+63') && stored.length > 3) {
+        setAuthorityNumber(stored.slice(3))
+      }
+
+      setAuthoritySaveState('saved')
+      setAuthoritySaveMessage('Contact saved')
+
+      if (!backendOnline) {
+        setBackendOnline(true)
+      }
+    } catch (error) {
+      console.error(error)
+      setAuthoritySaveState('error')
+      setAuthoritySaveMessage(error instanceof Error ? error.message : 'Unable to save authority contact.')
+      if (error instanceof TypeError) {
+        setBackendOnline(false)
+      }
+    }
+  }, [authorityError, authorityNumber, backendOnline])
+
 
   const classifyBlob = useCallback(async (blob: Blob, origin: 'upload' | 'camera') => {
     if (isProcessingRef.current) return
@@ -180,6 +308,10 @@ function App() {
 
     const formData = new FormData()
     formData.append('file', blob, 'frame.jpg')
+    const formattedAuthority = authorityNumber.length === PH_LOCAL_NUMBER_LENGTH ? `+63${authorityNumber}` : ''
+    if (formattedAuthority) {
+      formData.append('authority_number', formattedAuthority)
+    }
 
     try {
       const response = await fetch(`${API_URL}/predict?source=${encodeURIComponent(origin)}`, {
@@ -202,7 +334,7 @@ function App() {
       setLoading(false)
       isProcessingRef.current = false
     }
-  }, [backendOnline])
+  }, [backendOnline, authorityNumber])
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -555,8 +687,10 @@ function App() {
               ) : (
                 <div className="flex gap-2">
                   <Button
-                    variant={isCameraRunning ? 'outline' : 'default'}
-                    className="border-slate-200 text-slate-700 hover:bg-slate-50"
+                    variant="outline"
+                    className={`border-slate-200 text-slate-700 hover:bg-slate-50 ${
+                      isCameraRunning ? 'bg-slate-900 text-white hover:bg-slate-800' : ''
+                    }`}
                     onClick={isCameraRunning ? stopLiveClassification : () => { void startLiveClassification() }}
                   >
                     {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : null}
@@ -609,10 +743,71 @@ function App() {
               <CardHeader>
                 <CardTitle>Actions</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-2">
-                <Button className="w-full justify-start bg-slate-900 text-white hover:bg-slate-800" disabled={status === 'Normal'}>
-                  Notify Authorities
-                </Button>
+              <CardContent className="space-y-4">
+                <div className="space-y-1">
+                  <label htmlFor="authority-contact" className="text-sm font-semibold text-slate-700">
+                    Authority Contact Number
+                  </label>
+                  <div className="flex rounded-md shadow-sm">
+                    <span className="inline-flex items-center rounded-l-md border border-r-0 border-slate-200 bg-slate-50 px-3 text-sm text-slate-500">
+                      +63
+                    </span>
+                    <input
+                      id="authority-contact"
+                      type="tel"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      value={authorityNumber}
+                      onChange={handleAuthorityNumberChange}
+                      className="flex-1 rounded-r-md border border-slate-200 px-3 py-2 text-sm text-slate-900 focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300"
+                      placeholder="9123456789"
+                      disabled={authorityLoading}
+                    />
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    Enter the 10 digits after +63 so we know who to notify when alerts trigger.
+                  </p>
+                  {authorityLoading && (
+                    <div className="flex items-center gap-2 text-xs text-slate-500">
+                      <RefreshCw className="h-3 w-3 animate-spin" />
+                      <span>Loading saved contact...</span>
+                    </div>
+                  )}
+                  {authorityLoadError && (
+                    <p className="text-xs text-red-600">{authorityLoadError}</p>
+                  )}
+                  {authorityNumber && !authorityError && (
+                    <p className="text-xs font-medium text-emerald-600">Ready to notify +63{authorityNumber}</p>
+                  )}
+                  {authorityError && <p className="text-xs text-red-600">{authorityError}</p>}
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="border-slate-200 text-slate-700 hover:bg-slate-50"
+                      onClick={() => {
+                        void handleSaveAuthorityNumber()
+                      }}
+                      disabled={
+                        authorityLoading ||
+                        authorityError !== null ||
+                        authorityNumber.length < PH_LOCAL_NUMBER_LENGTH ||
+                        authoritySaveState === 'saving'
+                      }
+                    >
+                      <span className="flex items-center gap-2">
+                        {authoritySaveState === 'saving' && <RefreshCw className="h-3 w-3 animate-spin" />}
+                        {authoritySaveState === 'saving' ? 'Saving...' : 'Save Contact'}
+                      </span>
+                    </Button>
+                    {authoritySaveState === 'saved' && (
+                      <p className="text-xs text-emerald-600">{authoritySaveMessage ?? 'Contact saved.'}</p>
+                    )}
+                    {authoritySaveState === 'error' && authoritySaveMessage && (
+                      <p className="text-xs text-red-600">{authoritySaveMessage}</p>
+                    )}
+                  </div>
+                </div>
                 <Button
                   variant="outline"
                   className="w-full justify-start border-slate-200 text-slate-700 hover:bg-slate-50"
@@ -850,6 +1045,7 @@ function App() {
                           <p className="text-xs text-slate-500">
                             {formatHistoryTimestamp(entry)}
                             {entry.filename ? ` • ${entry.filename}` : ''}
+                            {entry.authority_number ? ` • Notified: ${entry.authority_number}` : ''}
                           </p>
                         </div>
                         <div className="flex items-center gap-2 text-sm font-semibold">
