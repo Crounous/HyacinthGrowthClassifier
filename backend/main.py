@@ -222,7 +222,7 @@ async def predict(
         # Determine status based on prediction
         status = "Normal"
         alert = False
-        if prediction in ["Moderate Growth", "Large Growth"]:
+        if prediction in ["Large Growth"]:
             status = "Warning"
             alert = True
         metadata = {
