@@ -8,6 +8,7 @@ This folder contains the FastAPI service that powers River Hyacinth Monitor. Dep
 
 ## Environment Variables
 - `MODEL_PATH`: Absolute path to the `best_model.pth` checkpoint. Defaults to the repo root version, but set this in production if the file is stored elsewhere.
+- `MODEL_URL`: Optional HTTPS link used to download the checkpoint automatically (defaults to the provided Google Drive file). Set this when storing the model in Drive/S3/etc.
 
 ## Running Locally
 ```bash
@@ -16,4 +17,4 @@ uvicorn backend.main:app --host 0.0.0.0 --port 8000
 
 ## Deployment Notes
 - Expose the FastAPI `app` via `backend.main:app` (Railway start command example above).
-- Upload or mount the model file and set `MODEL_PATH` appropriately before starting the service.
+- If the model file is not present, the service will attempt to download it from `MODEL_URL`. Ensure the URL is accessible without manual auth (e.g., Drive sharing link converted to a direct download) and that `MODEL_PATH` points to a writable location like `/tmp/best_model.pth` on Railway.
