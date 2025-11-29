@@ -1,0 +1,11 @@
+image_path,plant_pixels,river_pixels,plant_fraction,label
+Pasig_Area14_IMG993.jpg,483505,578506,0.0403,No Growth
+Pasig_Area1_IMG013.jpg,179024,851781,0.0149,No Growth
+Pasig_Area13_IMG939.jpg,1222690,281942,0.1019,Low Growth
+Pasig_Area11_IMG834.jpg,2286162,48504,0.1905,Moderate Growth
+Pasig_Area12_IMG855.jpg,2423226,13668,0.2019,Moderate Growth
+Pasig_Area2_IMG087.jpg,6476486,182676,0.5397,Large Growth
+Pasig_Area7_IMG440.jpg,9633925,28659,0.8028,Large Growth
+Pasig_Area7_IMG360.jpg,9098358,11811,0.7582,Large Growth
+Pasig_Area5_IMG231.jpg,5828025,11993,0.4857,Large Growth
+Pasig_Area7_IMG597.jpg,5449864,50383,0.4542,Large Growth

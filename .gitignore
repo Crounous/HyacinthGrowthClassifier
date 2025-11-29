@@ -1,0 +1,54 @@
+# Node / Vite
+node_modules/
+frontend/node_modules/
+frontend/dist/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+*.egg-info/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+ENV/
+pip-wheel-metadata/
+site/
+dist/
+build/
+
+# Environment / secrets
+.env
+.env.*
+*.env.local
+*.secret
+
+# IDE / OS
+.vscode/
+.idea/
+*.code-workspace
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Project data artifacts
+Plant dataset/
+separated/
+trials2/
+trials2_blur/
+trials2_lowres/
+trials2*/
+trials*/
+evaluation_plots/
+
+# Model weights & checkpoints
+*.pth
+*.pt
