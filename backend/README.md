@@ -23,6 +23,9 @@ Every successful `/predict` call records the following metadata:
 - uploaded filename and file size (bytes)
 - model path reference
 - optional `authority_number` (+63 format) supplied from the UI
+- optional `authority_email` (validated email address) supplied from the UI
+
+> ℹ️ Ensure your `SUPABASE_TABLE` (`prediction_logs` by default) has `authority_number` **and** `authority_email` text columns so inserts succeed.
 
 History can be retrieved via `GET /history?limit=25&source=camera` with optional filtering by `source`. When Supabase credentials are not provided the endpoint returns `503` and logging is skipped.
 
@@ -32,13 +35,14 @@ Create a simple settings table (default name `settings`) with columns similar to
 
 | Column | Type | Notes |
 | --- | --- | --- |
-| `key` | `text primary key` | e.g., `authority_number`. |
-| `value` | `text` | Stores the `+63XXXXXXXXXX` number. |
+| `key` | `text primary key` | e.g., `authority_number`, `authority_email`. |
+| `value` | `text` | Stores the contact detail (`+63XXXXXXXXXX` or the email). |
 | `updated_at` | `timestamptz` | Optional trigger defaulting to `now()`. |
 
 Endpoints:
 
-- `GET /settings/authority-number` returns `{ "authority_number": "+63..." }` if stored.
-- `POST /settings/authority-number` accepts `{ "authority_number": "+63XXXXXXXXXX" }` and upserts the row.
+- `GET /settings/authority-number` now returns both fields: `{ "authority_number": "+63...", "authority_email": "user@example.com" }`.
+- `POST /settings/authority-number` accepts `{ "authority_number": "+63XXXXXXXXXX", "authority_email": "user@example.com" }`. Omit the email to keep the existing value or pass an empty string to clear it.
+- Legacy `/settings/authority-email` endpoints continue to work but simply proxy to the same Supabase row.
 
 Both endpoints require the Supabase client to be configured; otherwise a `503` is returned.

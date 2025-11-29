@@ -36,6 +36,7 @@ SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
 SUPABASE_TABLE = os.getenv("SUPABASE_TABLE", "prediction_logs")
 SUPABASE_SETTINGS_TABLE = os.getenv("SUPABASE_SETTINGS_TABLE", "settings")
 AUTHORITY_NUMBER_KEY = "authority_number"
+AUTHORITY_EMAIL_KEY = "authority_email"
 supabase_client: Optional[Client] = None
 
 if SUPABASE_URL and SUPABASE_SERVICE_KEY:
@@ -49,8 +50,13 @@ else:
     print("Supabase credentials missing; logging disabled.")
 
 
-class AuthorityNumberPayload(BaseModel):
+class AuthorityContactPayload(BaseModel):
     authority_number: str
+    authority_email: Optional[str] = None
+
+
+class AuthorityEmailPayload(BaseModel):
+    authority_email: Optional[str] = None
 
 
 def ensure_model_file():
@@ -117,7 +123,22 @@ def normalize_authority_number(raw_number: str) -> str:
     return f"+63{digits}"
 
 
-async def fetch_authority_setting() -> Optional[str]:
+def normalize_authority_email(raw_email: str) -> str:
+    email = (raw_email or "").strip().lower()
+    if not email:
+        raise ValueError("Authority email is required.")
+
+    if "@" not in email:
+        raise ValueError("Authority email must include @.")
+
+    local_part, _, domain = email.partition("@")
+    if not local_part or not domain or "." not in domain:
+        raise ValueError("Authority email must be a valid email address.")
+
+    return email
+
+
+async def fetch_setting_value(setting_key: str) -> Optional[str]:
     if not supabase_client:
         return None
 
@@ -126,7 +147,7 @@ async def fetch_authority_setting() -> Optional[str]:
             supabase_client
             .table(SUPABASE_SETTINGS_TABLE)
             .select("value")
-            .eq("key", AUTHORITY_NUMBER_KEY)
+            .eq("key", setting_key)
             .limit(1)
             .execute()
         )
@@ -138,23 +159,36 @@ async def fetch_authority_setting() -> Optional[str]:
     try:
         return await asyncio.to_thread(_fetch)
     except Exception as supabase_error:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch authority number: {supabase_error}") from supabase_error
+        raise HTTPException(status_code=500, detail=f"Failed to fetch {setting_key.replace('_', ' ')}: {supabase_error}") from supabase_error
 
 
-async def upsert_authority_setting(value: str) -> None:
+async def upsert_setting_value(setting_key: str, value: str) -> None:
     if not supabase_client:
         raise HTTPException(status_code=503, detail="Supabase logging is not configured")
 
     def _upsert():
         supabase_client.table(SUPABASE_SETTINGS_TABLE).upsert({
-            "key": AUTHORITY_NUMBER_KEY,
+            "key": setting_key,
             "value": value,
         }).execute()
 
     try:
         await asyncio.to_thread(_upsert)
     except Exception as supabase_error:
-        raise HTTPException(status_code=500, detail=f"Failed to save authority number: {supabase_error}") from supabase_error
+        raise HTTPException(status_code=500, detail=f"Failed to save {setting_key.replace('_', ' ')}: {supabase_error}") from supabase_error
+
+
+async def delete_setting_value(setting_key: str) -> None:
+    if not supabase_client:
+        raise HTTPException(status_code=503, detail="Supabase logging is not configured")
+
+    def _delete():
+        supabase_client.table(SUPABASE_SETTINGS_TABLE).delete().eq("key", setting_key).execute()
+
+    try:
+        await asyncio.to_thread(_delete)
+    except Exception as supabase_error:
+        raise HTTPException(status_code=500, detail=f"Failed to delete {setting_key.replace('_', ' ')}: {supabase_error}") from supabase_error
 
 
 @app.post("/predict")
@@ -162,6 +196,7 @@ async def predict(
     file: UploadFile = File(...),
     source: str = "upload",
     authority_number: Optional[str] = Form(None),
+    authority_email: Optional[str] = Form(None),
 ):
     if model is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
@@ -174,6 +209,13 @@ async def predict(
         if authority_number:
             try:
                 normalized_authority = normalize_authority_number(authority_number)
+            except ValueError as validation_error:
+                raise HTTPException(status_code=400, detail=str(validation_error)) from validation_error
+
+        normalized_email = None
+        if authority_email:
+            try:
+                normalized_email = normalize_authority_email(authority_email)
             except ValueError as validation_error:
                 raise HTTPException(status_code=400, detail=str(validation_error)) from validation_error
         
@@ -193,6 +235,7 @@ async def predict(
             "file_size": len(contents),
             "logged_at": datetime.utcnow().isoformat(),
             "authority_number": normalized_authority,
+            "authority_email": normalized_email,
         }
         asyncio.create_task(log_prediction(metadata))
 
@@ -210,20 +253,59 @@ async def get_authority_number_setting():
     if not supabase_client:
         raise HTTPException(status_code=503, detail="Supabase logging is not configured")
 
-    authority_number = await fetch_authority_setting()
-    return {"authority_number": authority_number}
+    authority_number = await fetch_setting_value(AUTHORITY_NUMBER_KEY)
+    authority_email = await fetch_setting_value(AUTHORITY_EMAIL_KEY)
+    return {"authority_number": authority_number, "authority_email": authority_email}
 
 
 @app.post("/settings/authority-number")
-async def set_authority_number_setting(payload: AuthorityNumberPayload):
-    normalized = None
+async def set_authority_number_setting(payload: AuthorityContactPayload):
     try:
-        normalized = normalize_authority_number(payload.authority_number)
+        normalized_number = normalize_authority_number(payload.authority_number)
     except ValueError as validation_error:
         raise HTTPException(status_code=400, detail=str(validation_error)) from validation_error
 
-    await upsert_authority_setting(normalized)
-    return {"authority_number": normalized}
+    normalized_email: Optional[str] = None
+    if payload.authority_email is not None:
+        trimmed_email = payload.authority_email.strip()
+        if trimmed_email:
+            try:
+                normalized_email = normalize_authority_email(trimmed_email)
+            except ValueError as validation_error:
+                raise HTTPException(status_code=400, detail=str(validation_error)) from validation_error
+            await upsert_setting_value(AUTHORITY_EMAIL_KEY, normalized_email)
+        else:
+            await delete_setting_value(AUTHORITY_EMAIL_KEY)
+    else:
+        normalized_email = await fetch_setting_value(AUTHORITY_EMAIL_KEY)
+
+    await upsert_setting_value(AUTHORITY_NUMBER_KEY, normalized_number)
+    return {"authority_number": normalized_number, "authority_email": normalized_email}
+
+
+@app.get("/settings/authority-email")
+async def get_authority_email_setting():
+    if not supabase_client:
+        raise HTTPException(status_code=503, detail="Supabase logging is not configured")
+
+    authority_email = await fetch_setting_value(AUTHORITY_EMAIL_KEY)
+    return {"authority_email": authority_email}
+
+
+@app.post("/settings/authority-email")
+async def set_authority_email_setting(payload: AuthorityEmailPayload):
+    raw_email = (payload.authority_email or "").strip()
+    if not raw_email:
+        await delete_setting_value(AUTHORITY_EMAIL_KEY)
+        return {"authority_email": None}
+
+    try:
+        normalized = normalize_authority_email(raw_email)
+    except ValueError as validation_error:
+        raise HTTPException(status_code=400, detail=str(validation_error)) from validation_error
+
+    await upsert_setting_value(AUTHORITY_EMAIL_KEY, normalized)
+    return {"authority_email": normalized}
 
 
 @app.get("/history")

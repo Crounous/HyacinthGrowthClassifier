@@ -9,6 +9,7 @@ const MIN_CLASSIFICATION_INTERVAL = 5
 const MAX_CLASSIFICATION_INTERVAL = 60 * 60 * 24
 const DEFAULT_CLASSIFICATION_INTERVAL = 5 * 60
 const PH_LOCAL_NUMBER_LENGTH = 10
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 type CameraDevice = {
   deviceId: string
@@ -27,6 +28,7 @@ type HistoryEntry = {
   model_path?: string | null
   file_size?: number | null
   authority_number?: string | null
+  authority_email?: string | null
 }
 
 type HistoryFilter = 'all' | 'camera' | 'upload'
@@ -88,7 +90,9 @@ function App() {
   const [historyError, setHistoryError] = useState<string | null>(null)
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>('all')
   const [authorityNumber, setAuthorityNumber] = useState('')
-  const [authorityError, setAuthorityError] = useState<string | null>(null)
+  const [authorityNumberError, setAuthorityNumberError] = useState<string | null>(null)
+  const [authorityEmail, setAuthorityEmail] = useState('')
+  const [authorityEmailError, setAuthorityEmailError] = useState<string | null>(null)
   const [authorityLoading, setAuthorityLoading] = useState(true)
   const [authorityLoadError, setAuthorityLoadError] = useState<string | null>(null)
   const [authoritySaveState, setAuthoritySaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
@@ -117,7 +121,7 @@ function App() {
 
     try {
       const response = await fetch(`${API_URL}/settings/authority-number`)
-      let payload: { authority_number?: string | null; detail?: string } | null = null
+      let payload: { authority_number?: string | null; authority_email?: string | null; detail?: string } | null = null
 
       try {
         payload = await response.json()
@@ -130,16 +134,24 @@ function App() {
         throw new Error(detail)
       }
 
-      const stored = payload?.authority_number
-      if (typeof stored === 'string' && stored.startsWith('+63') && stored.length > 3) {
-        setAuthorityNumber(stored.slice(3))
-        setAuthorityError(null)
+      const storedNumber = payload?.authority_number
+      if (typeof storedNumber === 'string' && storedNumber.startsWith('+63') && storedNumber.length > 3) {
+        setAuthorityNumber(storedNumber.slice(3))
+        setAuthorityNumberError(null)
       } else {
         setAuthorityNumber('')
       }
+
+      const storedEmail = payload?.authority_email
+      if (typeof storedEmail === 'string' && storedEmail.length > 0) {
+        setAuthorityEmail(storedEmail)
+      } else {
+        setAuthorityEmail('')
+      }
+      setAuthorityEmailError(null)
+
       setAuthoritySaveState('idle')
       setAuthoritySaveMessage(null)
-
       setAuthorityLoadError(null)
 
       if (!backendOnline) {
@@ -238,22 +250,48 @@ function App() {
     setAuthorityLoadError(null)
 
     if (!trimmed) {
-      setAuthorityError('Enter a contact number to notify.')
+      setAuthorityNumberError('Enter a contact number to notify.')
     } else if (trimmed.length < PH_LOCAL_NUMBER_LENGTH) {
-      setAuthorityError('Must include 10 digits after +63.')
+      setAuthorityNumberError('Must include 10 digits after +63.')
     } else {
-      setAuthorityError(null)
+      setAuthorityNumberError(null)
     }
   }
 
-  const handleSaveAuthorityNumber = useCallback(async () => {
-    if (authorityError || authorityNumber.length < PH_LOCAL_NUMBER_LENGTH) {
+  const handleAuthorityEmailChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const value = event.target.value
+    setAuthorityEmail(value)
+    setAuthoritySaveState('idle')
+    setAuthoritySaveMessage(null)
+    setAuthorityLoadError(null)
+
+    if (!value.trim()) {
+      setAuthorityEmailError(null)
+      return
+    }
+
+    if (!EMAIL_PATTERN.test(value.trim().toLowerCase())) {
+      setAuthorityEmailError('Enter a valid email address or leave blank.')
+    } else {
+      setAuthorityEmailError(null)
+    }
+  }
+
+  const handleSaveAuthorityContact = useCallback(async () => {
+    if (authorityNumberError || authorityNumber.length < PH_LOCAL_NUMBER_LENGTH) {
       setAuthoritySaveState('error')
       setAuthoritySaveMessage('Provide a full Philippine number before saving.')
       return
     }
 
+    if (authorityEmailError) {
+      setAuthoritySaveState('error')
+      setAuthoritySaveMessage('Fix the email field before saving.')
+      return
+    }
+
     const formattedAuthority = `+63${authorityNumber}`
+    const trimmedEmail = authorityEmail.trim().toLowerCase()
     setAuthoritySaveState('saving')
     setAuthoritySaveMessage(null)
 
@@ -263,10 +301,13 @@ function App() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ authority_number: formattedAuthority }),
+        body: JSON.stringify({
+          authority_number: formattedAuthority,
+          authority_email: trimmedEmail.length > 0 ? trimmedEmail : '',
+        }),
       })
 
-      let payload: { authority_number?: string; detail?: string } | null = null
+      let payload: { authority_number?: string; authority_email?: string | null; detail?: string } | null = null
 
       try {
         payload = await response.json()
@@ -279,13 +320,20 @@ function App() {
         throw new Error(detail)
       }
 
-      const stored = payload?.authority_number
-      if (typeof stored === 'string' && stored.startsWith('+63') && stored.length > 3) {
-        setAuthorityNumber(stored.slice(3))
+      const storedNumber = payload?.authority_number
+      if (typeof storedNumber === 'string' && storedNumber.startsWith('+63') && storedNumber.length > 3) {
+        setAuthorityNumber(storedNumber.slice(3))
+      }
+
+      const storedEmail = payload?.authority_email
+      if (typeof storedEmail === 'string' && storedEmail.length > 0) {
+        setAuthorityEmail(storedEmail)
+      } else {
+        setAuthorityEmail('')
       }
 
       setAuthoritySaveState('saved')
-      setAuthoritySaveMessage('Contact saved')
+      setAuthoritySaveMessage('Contact details saved')
 
       if (!backendOnline) {
         setBackendOnline(true)
@@ -298,7 +346,7 @@ function App() {
         setBackendOnline(false)
       }
     }
-  }, [authorityError, authorityNumber, backendOnline])
+  }, [authorityEmail, authorityEmailError, authorityNumber, authorityNumberError, backendOnline])
 
 
   const classifyBlob = useCallback(async (blob: Blob, origin: 'upload' | 'camera') => {
@@ -311,6 +359,10 @@ function App() {
     const formattedAuthority = authorityNumber.length === PH_LOCAL_NUMBER_LENGTH ? `+63${authorityNumber}` : ''
     if (formattedAuthority) {
       formData.append('authority_number', formattedAuthority)
+    }
+    const trimmedEmail = authorityEmail.trim().toLowerCase()
+    if (trimmedEmail && EMAIL_PATTERN.test(trimmedEmail)) {
+      formData.append('authority_email', trimmedEmail)
     }
 
     try {
@@ -334,7 +386,7 @@ function App() {
       setLoading(false)
       isProcessingRef.current = false
     }
-  }, [backendOnline, authorityNumber])
+  }, [backendOnline, authorityEmail, authorityNumber])
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -744,29 +796,56 @@ function App() {
                 <CardTitle>Actions</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="space-y-1">
-                  <label htmlFor="authority-contact" className="text-sm font-semibold text-slate-700">
-                    Authority Contact Number
-                  </label>
-                  <div className="flex rounded-md shadow-sm">
-                    <span className="inline-flex items-center rounded-l-md border border-r-0 border-slate-200 bg-slate-50 px-3 text-sm text-slate-500">
-                      +63
-                    </span>
+                <div className="space-y-4">
+                  <div className="space-y-1">
+                    <label htmlFor="authority-contact" className="text-sm font-semibold text-slate-700">
+                      Authority Contact Number
+                    </label>
+                    <div className="flex rounded-md shadow-sm">
+                      <span className="inline-flex items-center rounded-l-md border border-r-0 border-slate-200 bg-slate-50 px-3 text-sm text-slate-500">
+                        +63
+                      </span>
+                      <input
+                        id="authority-contact"
+                        type="tel"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        value={authorityNumber}
+                        onChange={handleAuthorityNumberChange}
+                        className="flex-1 rounded-r-md border border-slate-200 px-3 py-2 text-sm text-slate-900 focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300"
+                        placeholder="9123456789"
+                        disabled={authorityLoading}
+                      />
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      Enter the 10 digits after +63 so we know who to notify when alerts trigger.
+                    </p>
+                    {authorityNumber && !authorityNumberError && (
+                      <p className="text-xs font-medium text-emerald-600">Ready to notify +63{authorityNumber}</p>
+                    )}
+                    {authorityNumberError && <p className="text-xs text-red-600">{authorityNumberError}</p>}
+                  </div>
+
+                  <div className="space-y-1">
+                    <label htmlFor="authority-email" className="text-sm font-semibold text-slate-700">
+                      Authority Contact Email (optional)
+                    </label>
                     <input
-                      id="authority-contact"
-                      type="tel"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      value={authorityNumber}
-                      onChange={handleAuthorityNumberChange}
-                      className="flex-1 rounded-r-md border border-slate-200 px-3 py-2 text-sm text-slate-900 focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300"
-                      placeholder="9123456789"
+                      id="authority-email"
+                      type="email"
+                      value={authorityEmail}
+                      onChange={handleAuthorityEmailChange}
+                      className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-900 focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300"
+                      placeholder="authority@example.com"
                       disabled={authorityLoading}
                     />
+                    <p className="text-xs text-slate-500">We'll also email alerts to this address when warnings fire.</p>
+                    {authorityEmail && !authorityEmailError && (
+                      <p className="text-xs font-medium text-emerald-600">Will email alerts to {authorityEmail}</p>
+                    )}
+                    {authorityEmailError && <p className="text-xs text-red-600">{authorityEmailError}</p>}
                   </div>
-                  <p className="text-xs text-slate-500">
-                    Enter the 10 digits after +63 so we know who to notify when alerts trigger.
-                  </p>
+
                   {authorityLoading && (
                     <div className="flex items-center gap-2 text-xs text-slate-500">
                       <RefreshCw className="h-3 w-3 animate-spin" />
@@ -776,22 +855,20 @@ function App() {
                   {authorityLoadError && (
                     <p className="text-xs text-red-600">{authorityLoadError}</p>
                   )}
-                  {authorityNumber && !authorityError && (
-                    <p className="text-xs font-medium text-emerald-600">Ready to notify +63{authorityNumber}</p>
-                  )}
-                  {authorityError && <p className="text-xs text-red-600">{authorityError}</p>}
-                  <div className="flex flex-wrap items-center gap-2 pt-1">
+
+                  <div className="flex flex-wrap items-center gap-2">
                     <Button
                       variant="outline"
                       size="sm"
                       className="border-slate-200 text-slate-700 hover:bg-slate-50"
                       onClick={() => {
-                        void handleSaveAuthorityNumber()
+                        void handleSaveAuthorityContact()
                       }}
                       disabled={
                         authorityLoading ||
-                        authorityError !== null ||
+                        authorityNumberError !== null ||
                         authorityNumber.length < PH_LOCAL_NUMBER_LENGTH ||
+                        authorityEmailError !== null ||
                         authoritySaveState === 'saving'
                       }
                     >
@@ -1046,6 +1123,7 @@ function App() {
                             {formatHistoryTimestamp(entry)}
                             {entry.filename ? ` • ${entry.filename}` : ''}
                             {entry.authority_number ? ` • Notified: ${entry.authority_number}` : ''}
+                            {entry.authority_email ? ` • Email: ${entry.authority_email}` : ''}
                           </p>
                         </div>
                         <div className="flex items-center gap-2 text-sm font-semibold">
