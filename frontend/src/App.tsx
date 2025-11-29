@@ -690,8 +690,8 @@ function App() {
       <div className="max-w-4xl mx-auto space-y-8">
         <header className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-slate-900">River Hyacinth Monitor</h1>
-            <p className="text-slate-500">Live CCTV Feed Analysis</p>
+            <h1 className="text-3xl font-bold text-slate-900">Pasig River Monitor</h1>
+            <p className="text-slate-500">Live Pasig River CCTV Feed Analysis</p>
           </div>
           <div className="flex items-center gap-2">
             <span className="text-sm text-slate-500">System Status:</span>
@@ -732,7 +732,7 @@ function App() {
                   </Button>
                 </div>
               </div>
-              <CardDescription>Real-time monitoring of river section A-1</CardDescription>
+              <CardDescription>Real-time monitoring of the Pasig River corridor</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="aspect-video bg-slate-900 rounded-lg overflow-hidden relative flex items-center justify-center">
