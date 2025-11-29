@@ -10,8 +10,7 @@ import uvicorn
 import gdown
 from supabase import Client, create_client
 from pydantic import BaseModel
-import smtplib
-from email.message import EmailMessage
+import resend
 
 app = FastAPI()
 
@@ -40,15 +39,9 @@ SUPABASE_SETTINGS_TABLE = os.getenv("SUPABASE_SETTINGS_TABLE", "settings")
 AUTHORITY_NUMBER_KEY = "authority_number"
 AUTHORITY_EMAIL_KEY = "authority_email"
 supabase_client: Optional[Client] = None
-
-ALERT_SMTP_SERVER = os.getenv("ALERT_SMTP_SERVER")
-ALERT_SMTP_PORT = int(os.getenv("ALERT_SMTP_PORT", "587"))
-ALERT_SMTP_USERNAME = os.getenv("ALERT_SMTP_USERNAME")
-ALERT_SMTP_PASSWORD = os.getenv("ALERT_SMTP_PASSWORD")
-ALERT_FROM_EMAIL = os.getenv("ALERT_FROM_EMAIL")
-ALERT_SMTP_USE_TLS = os.getenv("ALERT_SMTP_USE_TLS", "true").lower() not in {"false", "0", "no"}
-
-EMAIL_ALERTS_ENABLED = bool(ALERT_SMTP_SERVER and ALERT_FROM_EMAIL)
+RESEND_API_KEY = os.getenv("RESEND_API_KEY")
+ALERT_FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL")
+EMAIL_ALERTS_ENABLED = bool(RESEND_API_KEY and ALERT_FROM_EMAIL)
 
 if SUPABASE_URL and SUPABASE_SERVICE_KEY:
     try:
@@ -61,9 +54,10 @@ else:
     print("Supabase credentials missing; logging disabled.")
 
 if EMAIL_ALERTS_ENABLED:
-    print("Authority email alerts enabled; warnings will trigger emails.")
+    resend.api_key = RESEND_API_KEY
+    print("Authority email alerts enabled via Resend; warnings will trigger emails.")
 else:
-    print("Authority email alerts disabled; set ALERT_SMTP_* env vars to enable.")
+    print("Authority email alerts disabled; set RESEND_API_KEY and RESEND_FROM_EMAIL to enable.")
 
 
 class AuthorityContactPayload(BaseModel):
@@ -144,21 +138,15 @@ async def send_authority_email(metadata: dict):
         "\n— River Hyacinth Monitor"
     )
 
-    def _send_email():
-        msg = EmailMessage()
-        msg["From"] = ALERT_FROM_EMAIL
-        msg["To"] = authority_email
-        msg["Subject"] = subject
-        msg.set_content(body)
+    payload = {
+        "from": ALERT_FROM_EMAIL,
+        "to": [authority_email],
+        "subject": subject,
+        "text": body,
+    }
 
-        with smtplib.SMTP(ALERT_SMTP_SERVER, ALERT_SMTP_PORT, timeout=30) as server:
-            server.ehlo()
-            if ALERT_SMTP_USE_TLS:
-                server.starttls()
-                server.ehlo()
-            if ALERT_SMTP_USERNAME and ALERT_SMTP_PASSWORD:
-                server.login(ALERT_SMTP_USERNAME, ALERT_SMTP_PASSWORD)
-            server.send_message(msg)
+    def _send_email():
+        resend.Emails.send(payload)
 
     try:
         await asyncio.to_thread(_send_email)

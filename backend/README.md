@@ -12,12 +12,8 @@ FastAPI service that loads the plant classification model and now logs predictio
 | `SUPABASE_SERVICE_KEY` | Service role key with insert/select access to the logging table. |
 | `SUPABASE_TABLE` | Optional. Table name for logs (`prediction_logs` by default). |
 | `SUPABASE_SETTINGS_TABLE` | Optional. Table storing UI preferences (`settings` by default). |
-| `ALERT_SMTP_SERVER` | Optional. SMTP host for authority-email alerts. |
-| `ALERT_SMTP_PORT` | Optional. SMTP port (`587` default). |
-| `ALERT_SMTP_USERNAME` | Optional. Username for SMTP auth (omit for anonymous). |
-| `ALERT_SMTP_PASSWORD` | Optional. Password/API key for SMTP auth. |
-| `ALERT_FROM_EMAIL` | Optional. Sender address used in alert emails. |
-| `ALERT_SMTP_USE_TLS` | Optional. `true`/`false` flag to start TLS (default `true`). |
+| `RESEND_API_KEY` | Optional. API key for Resend email delivery. |
+| `RESEND_FROM_EMAIL` | Optional. Sender address used in alert emails. Must be verified in Resend. |
 
 ## Logging Behavior
 
@@ -35,7 +31,7 @@ Every successful `/predict` call records the following metadata:
 
 ### Email Alerts
 
-When `ALERT_SMTP_SERVER` and `ALERT_FROM_EMAIL` are configured, any prediction classified as `Moderate Growth` or `Large Growth` triggers an email to the stored authority email address. Provide SMTP credentials if your provider requires authentication. The message includes the prediction label, status, source, captured filename, and timestamp.
+When `RESEND_API_KEY` and `RESEND_FROM_EMAIL` are configured, any prediction classified as `Moderate Growth` or `Large Growth` triggers an email through Resend to the stored authority email address. Make sure the sender domain/address is verified in your Resend dashboard. The message includes the prediction label, status, source, captured filename, and timestamp.
 
 History can be retrieved via `GET /history?limit=25&source=camera` with optional filtering by `source`. When Supabase credentials are not provided the endpoint returns `503` and logging is skipped.
 
