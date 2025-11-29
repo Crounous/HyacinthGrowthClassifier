@@ -7,5 +7,4 @@ pillow
 numpy
 gdown
 supabase
-resend
 --extra-index-url https://download.pytorch.org/whl/cpu

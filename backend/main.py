@@ -10,7 +10,6 @@ import uvicorn
 import gdown
 from supabase import Client, create_client
 from pydantic import BaseModel
-import resend
 
 app = FastAPI()
 
@@ -39,9 +38,6 @@ SUPABASE_SETTINGS_TABLE = os.getenv("SUPABASE_SETTINGS_TABLE", "settings")
 AUTHORITY_NUMBER_KEY = "authority_number"
 AUTHORITY_EMAIL_KEY = "authority_email"
 supabase_client: Optional[Client] = None
-RESEND_API_KEY = os.getenv("RESEND_API_KEY")
-ALERT_FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL")
-EMAIL_ALERTS_ENABLED = bool(RESEND_API_KEY and ALERT_FROM_EMAIL)
 
 if SUPABASE_URL and SUPABASE_SERVICE_KEY:
     try:
@@ -52,12 +48,6 @@ if SUPABASE_URL and SUPABASE_SERVICE_KEY:
         print(f"Failed to init Supabase client: {supabase_error}")
 else:
     print("Supabase credentials missing; logging disabled.")
-
-if EMAIL_ALERTS_ENABLED:
-    resend.api_key = RESEND_API_KEY
-    print("Authority email alerts enabled via Resend; warnings will trigger emails.")
-else:
-    print("Authority email alerts disabled; set RESEND_API_KEY and RESEND_FROM_EMAIL to enable.")
 
 
 class AuthorityContactPayload(BaseModel):
@@ -115,43 +105,6 @@ async def log_prediction(metadata: dict):
         await asyncio.to_thread(_insert)
     except Exception as supabase_error:
         print(f"Supabase logging failed: {supabase_error}")
-
-
-async def send_authority_email(metadata: dict):
-    if not EMAIL_ALERTS_ENABLED:
-        return
-
-    authority_email = metadata.get("authority_email")
-    if not authority_email:
-        return
-
-    subject = f"River Hyacinth Alert: {metadata.get('prediction', 'Unknown')}"
-    body = (
-        "Hello,\n\n"
-        "A new river hyacinth analysis triggered a warning.\n\n"
-        f"Prediction: {metadata.get('prediction', 'Unknown')}\n"
-        f"Status: {metadata.get('status', 'Unknown')}\n"
-        f"Source: {metadata.get('source', 'unspecified')}\n"
-        f"Filename: {metadata.get('filename') or 'N/A'}\n"
-        f"Captured At (UTC): {metadata.get('logged_at', datetime.utcnow().isoformat())}\n"
-        "\nPlease coordinate clearing operations as soon as possible.\n"
-        "\n— River Hyacinth Monitor"
-    )
-
-    payload = {
-        "from": ALERT_FROM_EMAIL,
-        "to": [authority_email],
-        "subject": subject,
-        "text": body,
-    }
-
-    def _send_email():
-        resend.Emails.send(payload)
-
-    try:
-        await asyncio.to_thread(_send_email)
-    except Exception as email_error:
-        print(f"Authority email notification failed: {email_error}")
 
 
 def normalize_authority_number(raw_number: str) -> str:
@@ -285,9 +238,6 @@ async def predict(
             "authority_email": normalized_email,
         }
         asyncio.create_task(log_prediction(metadata))
-
-        if alert and normalized_email and EMAIL_ALERTS_ENABLED:
-            asyncio.create_task(send_authority_email(metadata))
 
         return {
             "prediction": prediction,

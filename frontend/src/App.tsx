@@ -3,8 +3,13 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from './components/ui/button'
 import { Badge } from './components/ui/badge'
 import { AlertTriangle, CheckCircle, Camera, History, RefreshCw, Settings2, SlidersHorizontal, UploadCloud, Video, X } from 'lucide-react'
+import emailjs from '@emailjs/browser'
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+const EMAILJS_SERVICE_ID = import.meta.env.VITE_EMAILJS_SERVICE_ID ?? ''
+const EMAILJS_TEMPLATE_ID = import.meta.env.VITE_EMAILJS_TEMPLATE_ID ?? ''
+const EMAILJS_PUBLIC_KEY = import.meta.env.VITE_EMAILJS_PUBLIC_KEY ?? ''
+const EMAIL_ALERTS_ENABLED = Boolean(EMAILJS_SERVICE_ID && EMAILJS_TEMPLATE_ID && EMAILJS_PUBLIC_KEY)
 const MIN_CLASSIFICATION_INTERVAL = 5
 const MAX_CLASSIFICATION_INTERVAL = 60 * 60 * 24
 const DEFAULT_CLASSIFICATION_INTERVAL = 5 * 60
@@ -348,8 +353,35 @@ function App() {
     }
   }, [authorityEmail, authorityEmailError, authorityNumber, authorityNumberError, backendOnline])
 
+  const sendAuthorityEmailAlert = useCallback(async (payload: {
+    recipient: string
+    prediction: string
+    status: string
+    source: string
+    filename?: string | null
+  }) => {
+    if (!EMAIL_ALERTS_ENABLED) return
 
-  const classifyBlob = useCallback(async (blob: Blob, origin: 'upload' | 'camera') => {
+    const templateParams = {
+      to_email: payload.recipient,
+      prediction: payload.prediction,
+      status: payload.status,
+      source: payload.source,
+      filename: payload.filename ?? 'N/A',
+      timestamp: new Date().toLocaleString(),
+    }
+
+    try {
+      await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, templateParams, {
+        publicKey: EMAILJS_PUBLIC_KEY,
+      })
+    } catch (error) {
+      console.error('Authority email notification failed:', error)
+    }
+  }, [])
+
+
+  const classifyBlob = useCallback(async (blob: Blob, origin: 'upload' | 'camera', filename?: string) => {
     if (isProcessingRef.current) return
     isProcessingRef.current = true
     setLoading(true)
@@ -361,7 +393,8 @@ function App() {
       formData.append('authority_number', formattedAuthority)
     }
     const trimmedEmail = authorityEmail.trim().toLowerCase()
-    if (trimmedEmail && EMAIL_PATTERN.test(trimmedEmail)) {
+    const hasValidAuthorityEmail = Boolean(trimmedEmail && EMAIL_PATTERN.test(trimmedEmail))
+    if (hasValidAuthorityEmail) {
       formData.append('authority_email', trimmedEmail)
     }
 
@@ -378,6 +411,16 @@ function App() {
       setPrediction(data.prediction)
       setStatus(data.status)
       setLastChecked(new Date())
+
+      if (data.alert && data.prediction === 'Large Growth' && hasValidAuthorityEmail && EMAIL_ALERTS_ENABLED) {
+        void sendAuthorityEmailAlert({
+          recipient: trimmedEmail,
+          prediction: data.prediction ?? 'Unknown Prediction',
+          status: data.status ?? 'Warning',
+          source: origin,
+          filename: filename ?? (origin === 'upload' ? 'Uploaded image' : 'Live camera frame'),
+        })
+      }
     } catch (error) {
       console.error(error)
       alert('Error analyzing image')
@@ -386,7 +429,7 @@ function App() {
       setLoading(false)
       isProcessingRef.current = false
     }
-  }, [backendOnline, authorityEmail, authorityNumber])
+  }, [backendOnline, authorityEmail, authorityNumber, sendAuthorityEmailAlert])
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -398,7 +441,7 @@ function App() {
     }
     reader.readAsDataURL(file)
 
-    await classifyBlob(file, 'upload')
+    await classifyBlob(file, 'upload', file.name)
   }
 
   const triggerFileInput = () => {
@@ -576,7 +619,7 @@ function App() {
     )
 
     if (blob) {
-      await classifyBlob(blob, 'camera')
+      await classifyBlob(blob, 'camera', 'Live camera frame')
     }
   }, [classifyBlob])
 

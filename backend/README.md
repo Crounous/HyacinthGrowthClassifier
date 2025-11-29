@@ -12,8 +12,6 @@ FastAPI service that loads the plant classification model and now logs predictio
 | `SUPABASE_SERVICE_KEY` | Service role key with insert/select access to the logging table. |
 | `SUPABASE_TABLE` | Optional. Table name for logs (`prediction_logs` by default). |
 | `SUPABASE_SETTINGS_TABLE` | Optional. Table storing UI preferences (`settings` by default). |
-| `RESEND_API_KEY` | Optional. API key for Resend email delivery. |
-| `RESEND_FROM_EMAIL` | Optional. Sender address used in alert emails. Must be verified in Resend. |
 
 ## Logging Behavior
 
@@ -29,9 +27,11 @@ Every successful `/predict` call records the following metadata:
 
 > ℹ️ Ensure your `SUPABASE_TABLE` (`prediction_logs` by default) has `authority_number` **and** `authority_email` text columns so inserts succeed.
 
+> 📧 Email notifications are handled entirely in the frontend via EmailJS; no additional backend environment variables are required.
+
 ### Email Alerts
 
-When `RESEND_API_KEY` and `RESEND_FROM_EMAIL` are configured, any prediction classified as `Moderate Growth` or `Large Growth` triggers an email through Resend to the stored authority email address. Make sure the sender domain/address is verified in your Resend dashboard. The message includes the prediction label, status, source, captured filename, and timestamp.
+The backend focuses on logging and model inference. Email notifications are now handled client-side through EmailJS (see `frontend/README.md`). The API still logs the authority email so the UI can display it in history records.
 
 History can be retrieved via `GET /history?limit=25&source=camera` with optional filtering by `source`. When Supabase credentials are not provided the endpoint returns `503` and logging is skipped.
 
