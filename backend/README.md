@@ -12,6 +12,12 @@ FastAPI service that loads the plant classification model and now logs predictio
 | `SUPABASE_SERVICE_KEY` | Service role key with insert/select access to the logging table. |
 | `SUPABASE_TABLE` | Optional. Table name for logs (`prediction_logs` by default). |
 | `SUPABASE_SETTINGS_TABLE` | Optional. Table storing UI preferences (`settings` by default). |
+| `ALERT_SMTP_SERVER` | Optional. SMTP host for authority-email alerts. |
+| `ALERT_SMTP_PORT` | Optional. SMTP port (`587` default). |
+| `ALERT_SMTP_USERNAME` | Optional. Username for SMTP auth (omit for anonymous). |
+| `ALERT_SMTP_PASSWORD` | Optional. Password/API key for SMTP auth. |
+| `ALERT_FROM_EMAIL` | Optional. Sender address used in alert emails. |
+| `ALERT_SMTP_USE_TLS` | Optional. `true`/`false` flag to start TLS (default `true`). |
 
 ## Logging Behavior
 
@@ -26,6 +32,10 @@ Every successful `/predict` call records the following metadata:
 - optional `authority_email` (validated email address) supplied from the UI
 
 > ℹ️ Ensure your `SUPABASE_TABLE` (`prediction_logs` by default) has `authority_number` **and** `authority_email` text columns so inserts succeed.
+
+### Email Alerts
+
+When `ALERT_SMTP_SERVER` and `ALERT_FROM_EMAIL` are configured, any prediction classified as `Moderate Growth` or `Large Growth` triggers an email to the stored authority email address. Provide SMTP credentials if your provider requires authentication. The message includes the prediction label, status, source, captured filename, and timestamp.
 
 History can be retrieved via `GET /history?limit=25&source=camera` with optional filtering by `source`. When Supabase credentials are not provided the endpoint returns `503` and logging is skipped.
 

@@ -10,6 +10,8 @@ import uvicorn
 import gdown
 from supabase import Client, create_client
 from pydantic import BaseModel
+import smtplib
+from email.message import EmailMessage
 
 app = FastAPI()
 
@@ -39,6 +41,15 @@ AUTHORITY_NUMBER_KEY = "authority_number"
 AUTHORITY_EMAIL_KEY = "authority_email"
 supabase_client: Optional[Client] = None
 
+ALERT_SMTP_SERVER = os.getenv("ALERT_SMTP_SERVER")
+ALERT_SMTP_PORT = int(os.getenv("ALERT_SMTP_PORT", "587"))
+ALERT_SMTP_USERNAME = os.getenv("ALERT_SMTP_USERNAME")
+ALERT_SMTP_PASSWORD = os.getenv("ALERT_SMTP_PASSWORD")
+ALERT_FROM_EMAIL = os.getenv("ALERT_FROM_EMAIL")
+ALERT_SMTP_USE_TLS = os.getenv("ALERT_SMTP_USE_TLS", "true").lower() not in {"false", "0", "no"}
+
+EMAIL_ALERTS_ENABLED = bool(ALERT_SMTP_SERVER and ALERT_FROM_EMAIL)
+
 if SUPABASE_URL and SUPABASE_SERVICE_KEY:
     try:
         supabase_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
@@ -48,6 +59,11 @@ if SUPABASE_URL and SUPABASE_SERVICE_KEY:
         print(f"Failed to init Supabase client: {supabase_error}")
 else:
     print("Supabase credentials missing; logging disabled.")
+
+if EMAIL_ALERTS_ENABLED:
+    print("Authority email alerts enabled; warnings will trigger emails.")
+else:
+    print("Authority email alerts disabled; set ALERT_SMTP_* env vars to enable.")
 
 
 class AuthorityContactPayload(BaseModel):
@@ -105,6 +121,49 @@ async def log_prediction(metadata: dict):
         await asyncio.to_thread(_insert)
     except Exception as supabase_error:
         print(f"Supabase logging failed: {supabase_error}")
+
+
+async def send_authority_email(metadata: dict):
+    if not EMAIL_ALERTS_ENABLED:
+        return
+
+    authority_email = metadata.get("authority_email")
+    if not authority_email:
+        return
+
+    subject = f"River Hyacinth Alert: {metadata.get('prediction', 'Unknown')}"
+    body = (
+        "Hello,\n\n"
+        "A new river hyacinth analysis triggered a warning.\n\n"
+        f"Prediction: {metadata.get('prediction', 'Unknown')}\n"
+        f"Status: {metadata.get('status', 'Unknown')}\n"
+        f"Source: {metadata.get('source', 'unspecified')}\n"
+        f"Filename: {metadata.get('filename') or 'N/A'}\n"
+        f"Captured At (UTC): {metadata.get('logged_at', datetime.utcnow().isoformat())}\n"
+        "\nPlease coordinate clearing operations as soon as possible.\n"
+        "\n— River Hyacinth Monitor"
+    )
+
+    def _send_email():
+        msg = EmailMessage()
+        msg["From"] = ALERT_FROM_EMAIL
+        msg["To"] = authority_email
+        msg["Subject"] = subject
+        msg.set_content(body)
+
+        with smtplib.SMTP(ALERT_SMTP_SERVER, ALERT_SMTP_PORT, timeout=30) as server:
+            server.ehlo()
+            if ALERT_SMTP_USE_TLS:
+                server.starttls()
+                server.ehlo()
+            if ALERT_SMTP_USERNAME and ALERT_SMTP_PASSWORD:
+                server.login(ALERT_SMTP_USERNAME, ALERT_SMTP_PASSWORD)
+            server.send_message(msg)
+
+    try:
+        await asyncio.to_thread(_send_email)
+    except Exception as email_error:
+        print(f"Authority email notification failed: {email_error}")
 
 
 def normalize_authority_number(raw_number: str) -> str:
@@ -238,6 +297,9 @@ async def predict(
             "authority_email": normalized_email,
         }
         asyncio.create_task(log_prediction(metadata))
+
+        if alert and normalized_email and EMAIL_ALERTS_ENABLED:
+            asyncio.create_task(send_authority_email(metadata))
 
         return {
             "prediction": prediction,
