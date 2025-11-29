@@ -828,7 +828,7 @@ function App() {
 
                   <div className="space-y-1">
                     <label htmlFor="authority-email" className="text-sm font-semibold text-slate-700">
-                      Authority Contact Email (optional)
+                      Authority Contact Email
                     </label>
                     <input
                       id="authority-email"
@@ -841,7 +841,7 @@ function App() {
                     />
                     <p className="text-xs text-slate-500">We'll also email alerts to this address when warnings fire.</p>
                     {authorityEmail && !authorityEmailError && (
-                      <p className="text-xs font-medium text-emerald-600">Will email alerts to {authorityEmail}</p>
+                      <p className="text-xs font-medium text-emerald-600">Ready to notify {authorityEmail}</p>
                     )}
                     {authorityEmailError && <p className="text-xs text-red-600">{authorityEmailError}</p>}
                   </div>
