@@ -6,4 +6,5 @@ torchvision==0.24.1+cpu
 pillow
 numpy
 gdown
+supabase
 --extra-index-url https://download.pytorch.org/whl/cpu

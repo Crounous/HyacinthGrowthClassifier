@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from './components/ui/card'
 import { Button } from './components/ui/button'
 import { Badge } from './components/ui/badge'
-import { AlertTriangle, CheckCircle, Camera, RefreshCw, Settings2, SlidersHorizontal, UploadCloud, Video, X } from 'lucide-react'
+import { AlertTriangle, CheckCircle, Camera, History, RefreshCw, Settings2, SlidersHorizontal, UploadCloud, Video, X } from 'lucide-react'
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 const MIN_CLASSIFICATION_INTERVAL = 5
@@ -11,6 +11,28 @@ const MAX_CLASSIFICATION_INTERVAL = 60 * 60 * 24
 type CameraDevice = {
   deviceId: string
   label: string
+}
+
+type HistoryEntry = {
+  id?: number | string
+  prediction?: string | null
+  status?: string
+  alert?: boolean
+  source?: string | null
+  filename?: string | null
+  logged_at?: string | null
+  created_at?: string | null
+  model_path?: string | null
+  file_size?: number | null
+}
+
+type HistoryFilter = 'all' | 'camera' | 'upload'
+
+const HISTORY_LIMIT = 25
+const HISTORY_FILTER_LABELS: Record<HistoryFilter, string> = {
+  all: 'All Entries',
+  camera: 'Live Camera',
+  upload: 'Manual Uploads',
 }
 
 const formatIntervalLabel = (seconds: number) => {
@@ -42,6 +64,7 @@ const clampInterval = (value: number) => {
 
 function App() {
   const [status, setStatus] = useState<'Normal' | 'Warning'>('Normal')
+  const [backendOnline, setBackendOnline] = useState(true)
   const [prediction, setPrediction] = useState('No Growth')
   const [lastChecked, setLastChecked] = useState(new Date())
   const [loading, setLoading] = useState(false)
@@ -56,12 +79,18 @@ function App() {
   const [deviceLoadError, setDeviceLoadError] = useState<string | null>(null)
   const [classificationIntervalSeconds, setClassificationIntervalSeconds] = useState(MIN_CLASSIFICATION_INTERVAL)
   const [intervalInputValue, setIntervalInputValue] = useState(String(MIN_CLASSIFICATION_INTERVAL))
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false)
+  const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyError, setHistoryError] = useState<string | null>(null)
+  const [historyFilter, setHistoryFilter] = useState<HistoryFilter>('all')
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const captureIntervalRef = useRef<number | null>(null)
   const isProcessingRef = useRef(false)
+  const hasRequestedCameraPermission = useRef(false)
 
   useEffect(() => {
     return () => {
@@ -73,8 +102,77 @@ function App() {
     setIntervalInputValue(String(classificationIntervalSeconds))
   }, [classificationIntervalSeconds])
 
+  const fetchHistory = useCallback(async (filter: HistoryFilter) => {
+    setHistoryLoading(true)
+    setHistoryError(null)
 
-  const classifyBlob = useCallback(async (blob: Blob) => {
+    try {
+      const params = new URLSearchParams({ limit: String(HISTORY_LIMIT) })
+      if (filter !== 'all') {
+        params.append('source', filter)
+      }
+
+      const response = await fetch(`${API_URL}/history?${params.toString()}`)
+      let payload: { entries?: HistoryEntry[]; detail?: string } | null = null
+
+      try {
+        payload = await response.json()
+      } catch {
+        payload = null
+      }
+
+      if (!response.ok) {
+        const detail = typeof payload?.detail === 'string' ? payload.detail : 'Failed to fetch history log.'
+        throw new Error(detail)
+      }
+
+      if (!backendOnline) {
+        setBackendOnline(true)
+      }
+
+      setHistoryEntries(payload?.entries ?? [])
+    } catch (error) {
+      console.error(error)
+      setHistoryError(error instanceof Error ? error.message : 'Unable to load history log.')
+      if (error instanceof TypeError) {
+        setBackendOnline(false)
+      }
+    } finally {
+      setHistoryLoading(false)
+    }
+  }, [backendOnline])
+
+  useEffect(() => {
+    if (!isHistoryOpen) return
+    void fetchHistory(historyFilter)
+  }, [isHistoryOpen, historyFilter, fetchHistory])
+
+  const handleOpenHistory = () => {
+    setIsHistoryOpen(true)
+  }
+
+  const handleCloseHistory = () => {
+    setIsHistoryOpen(false)
+  }
+
+  const handleRefreshHistory = () => {
+    void fetchHistory(historyFilter)
+  }
+
+  const getSourceLabel = (source?: string | null) => {
+    if (source === 'camera') return 'Live Camera'
+    if (source === 'upload') return 'Manual Upload'
+    return source ?? 'Unknown Source'
+  }
+
+  const formatHistoryTimestamp = (entry: HistoryEntry) => {
+    const timestamp = entry.logged_at ?? entry.created_at
+    if (!timestamp) return 'Unknown time'
+    return new Date(timestamp).toLocaleString()
+  }
+
+
+  const classifyBlob = useCallback(async (blob: Blob, origin: 'upload' | 'camera') => {
     if (isProcessingRef.current) return
     isProcessingRef.current = true
     setLoading(true)
@@ -83,12 +181,13 @@ function App() {
     formData.append('file', blob, 'frame.jpg')
 
     try {
-      const response = await fetch(`${API_URL}/predict`, {
+      const response = await fetch(`${API_URL}/predict?source=${encodeURIComponent(origin)}`, {
         method: 'POST',
         body: formData,
       })
 
       if (!response.ok) throw new Error('Failed to analyze image')
+      if (!backendOnline) setBackendOnline(true)
 
       const data = await response.json()
       setPrediction(data.prediction)
@@ -97,11 +196,12 @@ function App() {
     } catch (error) {
       console.error(error)
       alert('Error analyzing image')
+      setBackendOnline(false)
     } finally {
       setLoading(false)
       isProcessingRef.current = false
     }
-  }, [])
+  }, [backendOnline])
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -113,7 +213,7 @@ function App() {
     }
     reader.readAsDataURL(file)
 
-    await classifyBlob(file)
+    await classifyBlob(file, 'upload')
   }
 
   const triggerFileInput = () => {
@@ -185,6 +285,26 @@ function App() {
     setIsCameraRunning(false)
   }
 
+  const ensureCameraPermission = useCallback(async () => {
+    if (hasRequestedCameraPermission.current) {
+      return true
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      return false
+    }
+
+    try {
+      const tempStream = await navigator.mediaDevices.getUserMedia({ video: true })
+      tempStream.getTracks().forEach((track) => track.stop())
+      hasRequestedCameraPermission.current = true
+      return true
+    } catch (error) {
+      console.error(error)
+      return false
+    }
+  }, [])
+
   const loadCameraDevices = async () => {
     if (!navigator.mediaDevices?.enumerateDevices) {
       setDeviceLoadError('Camera enumeration is not supported in this browser.')
@@ -194,6 +314,14 @@ function App() {
 
     setDevicesLoading(true)
     setDeviceLoadError(null)
+
+    const permissionGranted = await ensureCameraPermission()
+    if (!permissionGranted) {
+      setDevicesLoading(false)
+      setDeviceLoadError('Camera permission is required to list sources.')
+      setCameraDevices([])
+      return
+    }
 
     try {
       const devices = await navigator.mediaDevices.enumerateDevices()
@@ -263,7 +391,7 @@ function App() {
     )
 
     if (blob) {
-      await classifyBlob(blob)
+      await classifyBlob(blob, 'camera')
     }
   }, [classifyBlob])
 
@@ -330,7 +458,12 @@ function App() {
           </div>
           <div className="flex items-center gap-2">
             <span className="text-sm text-slate-500">System Status:</span>
-            <Badge variant="default" className="bg-green-500 hover:bg-green-600">Online</Badge>
+            <Badge
+              variant="default"
+              className={backendOnline ? 'bg-green-500 hover:bg-green-600' : 'bg-red-500 hover:bg-red-600'}
+            >
+              {backendOnline ? 'Online' : 'Offline'}
+            </Badge>
           </div>
         </header>
 
@@ -479,7 +612,12 @@ function App() {
                 <Button className="w-full justify-start bg-slate-900 text-white hover:bg-slate-800" disabled={status === 'Normal'}>
                   Notify Authorities
                 </Button>
-                <Button variant="outline" className="w-full justify-start border-slate-200 text-slate-700 hover:bg-slate-50">
+                <Button
+                  variant="outline"
+                  className="w-full justify-start border-slate-200 text-slate-700 hover:bg-slate-50"
+                  onClick={handleOpenHistory}
+                >
+                  <History className="h-4 w-4" />
                   View History Log
                 </Button>
                 <div className="space-y-1">
@@ -620,6 +758,114 @@ function App() {
               >
                 Apply Settings
               </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isHistoryOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={handleCloseHistory}
+        >
+          <div
+            className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 px-6 py-4">
+              <div className="flex items-center gap-3">
+                <div className="rounded-full bg-slate-100 p-2 text-slate-700">
+                  <History className="h-4 w-4" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-900">Prediction History</h2>
+                  <p className="text-sm text-slate-500">Review the latest logged classifications.</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {( ['all', 'camera', 'upload'] as HistoryFilter[]).map((filter) => (
+                  <Button
+                    key={filter}
+                    variant={historyFilter === filter ? 'default' : 'outline'}
+                    size="sm"
+                    className={historyFilter === filter ? 'bg-slate-900 text-white hover:bg-slate-800' : 'border-slate-200 text-slate-700'}
+                    onClick={() => setHistoryFilter(filter)}
+                  >
+                    {HISTORY_FILTER_LABELS[filter]}
+                  </Button>
+                ))}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-slate-200 text-slate-700"
+                  onClick={handleRefreshHistory}
+                  disabled={historyLoading}
+                >
+                  <RefreshCw className={`h-4 w-4 ${historyLoading ? 'animate-spin' : ''}`} />
+                  Refresh
+                </Button>
+                <Button variant="ghost" size="icon" onClick={handleCloseHistory} aria-label="Close history log">
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+            <div className="max-h-[65vh] space-y-4 overflow-y-auto px-6 py-4">
+              {historyLoading ? (
+                <div className="flex h-40 flex-col items-center justify-center gap-2 text-slate-500">
+                  <RefreshCw className="h-5 w-5 animate-spin" />
+                  <p>Loading recent activity...</p>
+                </div>
+              ) : historyError ? (
+                <div className="rounded-lg border border-red-100 bg-red-50 p-4 text-sm text-red-700">
+                  <p>{historyError}</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-3 border-red-200 text-red-700 hover:bg-red-100"
+                    onClick={handleRefreshHistory}
+                  >
+                    Try Again
+                  </Button>
+                </div>
+              ) : historyEntries.length === 0 ? (
+                <div className="flex h-40 flex-col items-center justify-center gap-2 text-slate-500">
+                  <History className="h-5 w-5" />
+                  <p>No predictions have been logged yet.</p>
+                </div>
+              ) : (
+                <ul className="divide-y divide-slate-100">
+                  {historyEntries.map((entry, index) => {
+                    const key = String(entry.id ?? entry.logged_at ?? `${entry.filename ?? 'entry'}-${index}`)
+                    const isWarning = entry.status === 'Warning'
+                    return (
+                      <li key={key} className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-semibold text-slate-900">{entry.prediction ?? 'Unknown Prediction'}</p>
+                            <Badge variant="outline" className="text-xs capitalize">
+                              {getSourceLabel(entry.source)}
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-slate-500">
+                            {formatHistoryTimestamp(entry)}
+                            {entry.filename ? ` • ${entry.filename}` : ''}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm font-semibold">
+                          {isWarning ? (
+                            <AlertTriangle className="h-4 w-4 text-red-600" />
+                          ) : (
+                            <CheckCircle className="h-4 w-4 text-emerald-600" />
+                          )}
+                          <span className={isWarning ? 'text-red-600' : 'text-emerald-600'}>
+                            {entry.status ?? 'Unknown'}
+                          </span>
+                        </div>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
             </div>
           </div>
         </div>
