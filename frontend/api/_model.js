@@ -1,5 +1,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { createRequire } from 'node:module'
+import { pathToFileURL } from 'node:url'
 
 import jpeg from 'jpeg-js'
 import { PNG } from 'pngjs'
@@ -154,8 +156,13 @@ export async function getSessionAndLabels() {
       await ensureModelFiles(modelPath, modelUrl, labelsUrl)
 
       // Use WASM runtime for smaller serverless bundles.
-      // Load WASM from CDN to avoid bundling large wasm assets.
-      ort.env.wasm.wasmPaths = `https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/`
+      // In Node.js (Vercel Serverless), WASM assets must be loaded from local file paths.
+      // Node's ESM loader does not support importing from https:// URLs.
+      const require = createRequire(import.meta.url)
+      const ortPkgJson = require.resolve('onnxruntime-web/package.json')
+      const ortBaseDir = path.dirname(ortPkgJson)
+      const ortDistDir = path.join(ortBaseDir, 'dist')
+      ort.env.wasm.wasmPaths = pathToFileURL(ortDistDir + path.sep).href
       ort.env.wasm.numThreads = 1
 
       const modelBytes = await fs.readFile(modelPath)
