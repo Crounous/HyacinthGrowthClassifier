@@ -743,7 +743,9 @@ function App() {
                   </Button>
                 </div>
               </div>
-              <CardDescription>Real-time monitoring of the Pasig River corridor</CardDescription>
+              <CardDescription className="text-center text-base">
+                Real-time monitoring of the Pasig River corridor
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="aspect-video bg-slate-900 rounded-lg overflow-hidden relative flex items-center justify-center">
@@ -781,25 +783,61 @@ function App() {
                 <p className="mt-3 text-sm text-red-600">{cameraError}</p>
               )}
             </CardContent>
-            <CardFooter className="justify-between">
-              <div className="text-sm text-slate-500">
-                Last update: {lastChecked.toLocaleTimeString()}
-              </div>
-              {mode === 'upload' ? (
-                <div className="flex gap-2">
-                  <input 
-                    type="file" 
-                    ref={fileInputRef} 
-                    className="hidden" 
-                    accept="image/*"
-                    onChange={handleFileUpload}
-                  />
-                  <Button variant="outline" onClick={triggerFileInput} disabled={loading} className="border-slate-200 text-slate-700 hover:bg-slate-50">
-                    {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : null}
-                    Upload Image
-                  </Button>
+            {mode === 'upload' ? (
+              <CardFooter className="flex-col items-stretch gap-3">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="text-sm text-slate-500">
+                    Last update: {lastChecked.toLocaleTimeString()}
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      className="hidden"
+                      accept="image/*"
+                      onChange={handleFileUpload}
+                    />
+                    <Button
+                      variant="outline"
+                      onClick={triggerFileInput}
+                      disabled={loading}
+                      className="border-slate-200 text-slate-700 hover:bg-slate-50"
+                    >
+                      {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : null}
+                      Upload Image
+                    </Button>
+                  </div>
                 </div>
-              ) : (
+
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                  <p className="font-semibold text-slate-700">Quick FAQ</p>
+                  <div className="mt-2 space-y-3">
+                    <div>
+                      <p className="font-semibold text-slate-700">How does this help the Pasig River Ferry?</p>
+                      <p>
+                        Early hyacinth detection helps reduce route disruptions and supports faster decisions on clearing and dispatch.
+                      </p>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-slate-700">What should I do when I see “Large Growth”?</p>
+                      <p>
+                        Treat it as a warning: log the report, notify the authority contact, and schedule clearing/inspection for that area.
+                      </p>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-slate-700">Where is the data stored?</p>
+                      <p>
+                        Predictions are stored in Supabase so you can review history and track trends over time.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </CardFooter>
+            ) : (
+              <CardFooter className="justify-between">
+                <div className="text-sm text-slate-500">
+                  Last update: {lastChecked.toLocaleTimeString()}
+                </div>
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
@@ -812,8 +850,8 @@ function App() {
                     {isCameraRunning ? 'Stop Live Feed' : 'Start Live Feed'}
                   </Button>
                 </div>
-              )}
-            </CardFooter>
+              </CardFooter>
+            )}
           </Card>
 
           {/* Status Panel */}
