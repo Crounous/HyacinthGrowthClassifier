@@ -413,7 +413,18 @@ function App() {
         body: formData,
       })
 
-      if (!response.ok) throw new Error('Failed to analyze image')
+      if (!response.ok) {
+        let detail = 'Failed to analyze image'
+        try {
+          const payload = await response.json()
+          if (payload && typeof payload.detail === 'string') {
+            detail = payload.detail
+          }
+        } catch {
+          // ignore
+        }
+        throw new Error(detail)
+      }
       if (!backendOnline) setBackendOnline(true)
 
       const data = await response.json()
@@ -432,7 +443,7 @@ function App() {
       }
     } catch (error) {
       console.error(error)
-      alert('Error analyzing image')
+      alert(error instanceof Error ? error.message : 'Error analyzing image')
       setBackendOnline(false)
     } finally {
       setLoading(false)
