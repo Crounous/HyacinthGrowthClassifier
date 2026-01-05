@@ -35,6 +35,10 @@ MODEL_PATH=
 - `LABELS_URL` is optional; if omitted, the API will try to derive it by replacing `.onnx` with `.labels.json`.
 - `MODEL_PATH` is optional; default is `/tmp/best_model.onnx` on Vercel.
 
+### Model Inference Notes (Vercel)
+
+The `/api/predict` route runs inference inside a Vercel Serverless Function. To stay under Vercel's serverless bundle size limits, the API uses `onnxruntime-web` (WASM) and decodes images as JPEG/PNG.
+
 ## Uploading Large Models to Supabase Storage
 
 The Supabase dashboard upload UI may reject large files (for example >50MB). You can upload your ONNX model from your machine instead.
