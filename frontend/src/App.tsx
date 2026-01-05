@@ -5,7 +5,7 @@ import { Badge } from './components/ui/badge'
 import { AlertTriangle, CheckCircle, Camera, History, RefreshCw, Settings2, SlidersHorizontal, UploadCloud, Video, X } from 'lucide-react'
 import emailjs from '@emailjs/browser'
 
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+const API_URL = import.meta.env.VITE_API_URL ?? ''
 const EMAILJS_SERVICE_ID = import.meta.env.VITE_EMAILJS_SERVICE_ID ?? ''
 const EMAILJS_TEMPLATE_ID = import.meta.env.VITE_EMAILJS_TEMPLATE_ID ?? ''
 const EMAILJS_PUBLIC_KEY = import.meta.env.VITE_EMAILJS_PUBLIC_KEY ?? ''

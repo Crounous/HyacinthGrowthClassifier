@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    { "source": "/predict", "destination": "/api/predict" },
+    { "source": "/history", "destination": "/api/history" },
+    { "source": "/settings/authority-number", "destination": "/api/settings/authority-number" },
+    { "source": "/settings/authority-email", "destination": "/api/settings/authority-email" }
+  ]
+}

@@ -1,10 +1,8 @@
 fastapi
 uvicorn
 python-multipart
-torch==2.9.1+cpu
-torchvision==0.24.1+cpu
 pillow
 numpy
+onnxruntime
 gdown
 supabase
---extra-index-url https://download.pytorch.org/whl/cpu

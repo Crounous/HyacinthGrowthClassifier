@@ -52,3 +52,4 @@ evaluation_plots/
 # Model weights & checkpoints
 *.pth
 *.pt
+*.onnx

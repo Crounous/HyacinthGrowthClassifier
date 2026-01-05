@@ -23,10 +23,11 @@ app.add_middleware(
 )
 
 # Initialize model path (prefers env override so deployments can mount models elsewhere)
-DEFAULT_MODEL_URL = "https://drive.google.com/uc?id=1_7GG84XkQ0-gX-VYEyOnoWVf3RBTM6mj"
+# NOTE: Default URL is intentionally blank; set MODEL_URL to a downloadable .onnx.
+DEFAULT_MODEL_URL = ""
 MODEL_PATH = os.getenv(
     "MODEL_PATH",
-    os.path.join(os.path.dirname(os.path.dirname(__file__)), "best_model.pth"),
+    os.path.join(os.path.dirname(os.path.dirname(__file__)), "best_model.onnx"),
 )
 MODEL_URL = os.getenv("MODEL_URL", DEFAULT_MODEL_URL)
 model = None

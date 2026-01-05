@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 
 import pandas as pd
 from PIL import Image
@@ -11,6 +12,7 @@ DATA_DIR = Path("Plant dataset")
 TRAIN_CSV = Path("train.csv")
 VAL_CSV = Path("val.csv")
 MODEL_OUT = Path("best_model.pth")
+MODEL_ONNX_OUT = Path("best_model.onnx")
 
 LABELS = ["No Growth", "Low Growth", "Moderate Growth", "Large Growth"]
 LABEL_TO_IDX = {lbl: i for i, lbl in enumerate(LABELS)}
@@ -71,6 +73,37 @@ def build_model(num_classes: int = 4):
     in_features = model.fc.in_features
     model.fc = nn.Linear(in_features, num_classes)
     return model
+
+
+def export_onnx(model: nn.Module, onnx_path: Path, labels_path: Path):
+    model_cpu = build_model(num_classes=len(LABELS))
+    model_cpu.load_state_dict(model.state_dict())
+    model_cpu.eval()
+
+    dummy = torch.randn(1, 3, 224, 224, dtype=torch.float32)
+
+    try:
+        torch.onnx.export(
+            model_cpu,
+            dummy,
+            str(onnx_path),
+            opset_version=17,
+            input_names=["input"],
+            output_names=["logits"],
+            dynamic_axes={"input": {0: "batch"}, "logits": {0: "batch"}},
+            do_constant_folding=True,
+        )
+    except Exception as exc:
+        print(f"  -> ONNX export failed: {exc}")
+        print("     Tip: install the 'onnx' package in your training environment.")
+        return
+
+    try:
+        labels_path.write_text(json.dumps(LABELS, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception as exc:
+        print(f"  -> Warning: failed to write labels file {labels_path}: {exc}")
+
+    print(f"  -> Exported ONNX to {onnx_path}")
 
 
 def train(num_epochs: int = 20, lr: float = 1e-4, batch_size: int = 32):
@@ -147,6 +180,12 @@ def train(num_epochs: int = 20, lr: float = 1e-4, batch_size: int = 32):
                 "labels": LABELS,
             }, MODEL_OUT)
             print(f"  -> New best model saved (val acc={best_val_acc:.4f})")
+
+            export_onnx(
+                model,
+                onnx_path=MODEL_ONNX_OUT,
+                labels_path=MODEL_ONNX_OUT.with_suffix(".labels.json"),
+            )
 
     print("Training finished. Best val acc:", best_val_acc)
 
